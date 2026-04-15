@@ -1,0 +1,164 @@
+services:
+  # --- DATABASE MASTER ---
+  db-master:
+    build: ./database
+    container_name: db-master
+    restart: always
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=vt4pOiNt5H3V32EypcSBN5U3m0y4VxwE
+      - POSTGRES_DB=auction_db
+
+      - POSTGRES_REPLICATION_MODE=master
+      - POSTGRES_REPLICATION_USER=repl_user
+      - POSTGRES_REPLICATION_PASSWORD=repl_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - auction_master_data:/var/lib/postgresql/data
+    networks:
+      - auction-network
+
+
+  # --- DATABASE SLAVE 1 ---
+  db-slave-1:
+    build: ./database
+    container_name: auction-db-slave-1
+    depends_on:
+      - db-master
+    environment:
+      - POSTGRES_MASTER_HOST=db-master
+      - POSTGRES_MASTER_PORT_NUMBER=5433
+      - POSTGRES_REPLICATION_MODE=slave
+      - POSTGRES_REPLICATION_USER=repl_user
+      - POSTGRES_REPLICATION_PASSWORD=repl_password
+      - POSTGRES_PASSWORD=password123
+    volumes:
+      - auction_slave_1_data:/var/lib/postgresql/data
+    networks:
+      - auction-network
+
+  # --- REDIS ---
+  redis-server:
+    image: redis:alpine
+    container_name: auction-redis
+    networks:
+      - auction-network
+
+  # --- BACKEND (DJANGO) ---
+  backend:
+    build: ./backend
+    container_name: backend
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_NAME=auction_db
+      - DB_USER=admin
+      - DB_PASSWORD=password123
+      - DB_HOST=db-master
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis-server:6379/0
+    depends_on:
+      - db-master
+      - redis-server
+    networks:
+      - auction-network
+
+  # --- FRONTEND (REACT) ---
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - auction-network
+
+
+# --- KAFKA ---
+# --- KAFKA NODE 0 ---
+  kafka-0:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-0
+    restart: always
+    networks:
+      - auction-network
+    ports:
+      - "9092:9092"
+    volumes:
+      - auction_kafka_0_data:/var/lib/kafka/data  # Thêm dòng này
+    environment:
+      - KAFKA_NODE_ID=0
+      - KAFKA_PROCESS_ROLES=broker,controller
+      # Quorum phải chứa cả 2 node để bầu chọn leader cho controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka-0:9093,1@kafka-1:9093
+      - CLUSTER_ID=MkU2OEVBNTcwNTJENDM2Qk
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-0:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      # Vì có 2 node, bạn có thể để replication factor là 2
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=2
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=2
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+
+  # --- KAFKA NODE 1 ---
+  kafka-1:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-1
+    restart: always
+    networks:
+      - auction-network
+    ports:
+      - "9192:9192"
+    volumes:
+      - auction_kafka_1_data:/var/lib/kafka/data  # Thêm dòng này
+    environment:
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka-0:9093,1@kafka-1:9093
+      - CLUSTER_ID=MkU2OEVBNTcwNTJENDM2Qk # Phải trùng Cluster ID với node 0
+      - KAFKA_LISTENERS=PLAINTEXT://:9192,CONTROLLER://:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-1:9192
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=2
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=2
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+
+# --- KAFKA GUI (AKHQ) ---
+  akhq:
+    image: 'tchiotludo/akhq:0.24.0'
+    restart: always
+    networks:
+      - auction-network
+    container_name: akhq
+    ports:
+      - '8180:8080'
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            auction-kafka-cluster:
+              properties:
+                # Kết nối tới 2 node bạn đã định nghĩa
+                bootstrap.servers: "kafka-0:9092,kafka-1:9192"
+        
+
+volumes:
+  auction_master_data:
+  auction_slave_1_data:
+  auction_kafka_0_data:
+  auction_kafka_1_data:
+
+networks:
+  auction-network:
+    driver: bridge
