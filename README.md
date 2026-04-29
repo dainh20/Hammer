@@ -11,3 +11,5 @@ Realtime Online Auction System
 - Real-time bidding
 - Auction lifecycle
 - Payment handling
+
+![alt text](image.png)
