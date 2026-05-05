@@ -16,3 +16,4 @@ aiokafka==0.10.0
 
 # Redis - Cho caching và matching engine sau này
 redis==5.0.3
+
