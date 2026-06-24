@@ -4,11 +4,11 @@
 CREATE TABLE users (
     user_id        BIGSERIAL PRIMARY KEY,
     username       VARCHAR(100) NOT NULL UNIQUE,
-    name           VARCHAR(255),
+    name           VARCHAR(255) NOT NULL,
     email          VARCHAR(255) NOT NULL UNIQUE,
     password_hash  TEXT NOT NULL,
-    phone          VARCHAR(20),
-    address        TEXT,
+    phone          VARCHAR(20) NOT NULL UNIQUE,
+    address        TEXT NOT NULL,
     status         VARCHAR(20) DEFAULT 'active'
         CHECK (status IN ('active', 'inactive', 'banned')),
     created_at     TIMESTAMPTZ DEFAULT NOW(),

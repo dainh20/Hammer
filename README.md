@@ -411,3 +411,10 @@ event payment
 ├── requirements.txt
 ├── Dockerfile
 └── .env
+
+
+
+
+devuser@cfeeaea25563:/app$ ls
+Dockerfile  app  models.py  requirements.txt
+devuser@cfeeaea25563:/app$ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

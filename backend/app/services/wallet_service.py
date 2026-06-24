@@ -1,19 +1,47 @@
-def approve_request(db, request_id):
-    result = db.execute("""
-        UPDATE wallet_requests
-        SET status = 'approved'
-        WHERE request_id = :id AND status = 'pending'
-        RETURNING *
-    """, {"id": request_id}).fetchone()
+from sqlalchemy.orm import Session
 
-    if not result:
-        raise Exception("Already processed")
+from app.repositories import wallet_repo
 
-    # update wallet
-    db.execute("""
-        UPDATE wallets
-        SET balance = balance + :amt
-        WHERE user_id = :uid
-    """, {"amt": result.amount, "uid": result.user_id})
+from app.repositories.wallet_repo import (
+    create_wallet
+)
 
-    db.commit()
+
+def deposit_money(
+    db: Session,
+    user_id: int,
+    amount: int
+):
+    # =====================================
+    # VALIDATE AMOUNT
+    # =====================================
+    if amount <= 0:
+        raise Exception(
+            "Invalid amount"
+        )
+
+    # =====================================
+    # GET WALLET
+    # =====================================
+    wallet = wallet_repo.get_wallet_by_user_id(
+        db,
+        user_id
+    )
+
+    # =====================================
+    # AUTO CREATE WALLET
+    # =====================================
+    if not wallet:
+        wallet = create_wallet(
+            db,
+            user_id
+        )
+
+    # =====================================
+    # UPDATE BALANCE
+    # =====================================
+    return wallet_repo.update_balance(
+        db,
+        user_id,
+        amount
+    )
